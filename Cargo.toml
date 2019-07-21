@@ -1,0 +1,25 @@
+[package]
+name = "gothamboogy"
+version = "0.1.0"
+authors = ["wakka <fungus.humungus@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+gotham = "0.4"
+hyper = "0.12"
+mustache = "0.9"
+lazy_static = "1.3"
+mime = "0.3"
+argon2rs = "0.2"
+rand = "0.7"
+hex = "0.3"
+serde = "1.0"
+serde_derive = "1.0"
+serde_urlencoded = "0.5"
+gotham_derive = "0.4"
+url = "1.7"
+futures = "0.1"
+log = "0.4"
+env_logger = "0.6"

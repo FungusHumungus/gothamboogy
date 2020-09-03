@@ -1,10 +1,6 @@
+use crate::redis::RedisConnection;
 use argon2rs::argon2i_simple;
 use rand::prelude::*;
-use std::sync::RwLock;
-
-lazy_static! {
-    pub static ref DATABASE: RwLock<Vec<User>> = RwLock::new(Vec::new());
-}
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -14,7 +10,6 @@ pub struct User {
 }
 
 impl User {
-    
     /// Create a new user. The password is salted and hashed using argon2i.
     pub fn new(username: &str, password: &str) -> Self {
         let mut data = [0u8; 32];
@@ -29,24 +24,30 @@ impl User {
     }
 }
 
-pub fn add_user(users: &mut Vec<User>, user: User) {
-    users.push(user);
+pub fn add_user(conn: &RedisConnection, user: User) {
+    let ser = serde_json::to_string(&user).unwrap();
+    conn.conn
+        .send_and_forget(resp_array!["HSET", "user", user.username, ser]);
 }
 
-pub fn validate_user<'a>(users: &'a [User], username: &str, password: &str) -> Option<&'a User> {
-    match users.iter().find(|u| u.username == username) {
-        Some(u) => {
-            let hashed = argon2i_simple(&password, &u.salt);
-            if hashed == u.password {
-                Some(u)
-            } else {
-                None
-            }
-        }
-        None => None,
-    }
+pub async fn validate_user(conn: &RedisConnection, username: &str, password: &str) -> Option<User> {
+    conn.conn
+        .send(resp_array!["HGET", "user", username])
+        .await
+        .ok()
+        .and_then(|u: String| {
+            serde_json::from_str(&u).ok().and_then(|user: User| {
+                let hashed = argon2i_simple(&password, &user.salt);
+                if hashed == user.password {
+                    Some(user)
+                } else {
+                    None
+                }
+            })
+        })
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,3 +73,4 @@ mod tests {
         assert_eq!(None, validate_user(&users, "user", "terrible_password"));
     }
 }
+*/

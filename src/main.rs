@@ -5,6 +5,8 @@ extern crate serde_derive;
 #[macro_use]
 extern crate gotham_derive;
 #[macro_use]
+extern crate redis_async;
+#[macro_use]
 extern crate log;
 
 use gotham::{
@@ -23,6 +25,7 @@ mod auth;
 mod database;
 mod form;
 mod handlers;
+mod redis;
 
 /*
 struct RedisBackend;
@@ -58,7 +61,12 @@ fn router() -> Router {
         .insecure();
 
     let pipelines = new_pipeline_set();
-    let (pipelines, default) = pipelines.add(new_pipeline().add(middleware).build());
+    let (pipelines, default) = pipelines.add(
+        new_pipeline()
+            .add(redis::RedisMiddleware)
+            .add(middleware)
+            .build(),
+    );
     let (pipelines, secured) = pipelines.add(new_pipeline().add(auth::AuthMiddleware).build());
 
     let pipeline_set = finalize_pipeline_set(pipelines);
@@ -92,7 +100,7 @@ fn main() {
     env_logger::init();
 
     let addr = "127.0.0.1:6767";
-    println!("Listening on http://{}", addr);
+    trace!("Listening on http://{}", addr);
 
     gotham::start(addr, router())
 }

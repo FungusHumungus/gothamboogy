@@ -1,6 +1,4 @@
-use crate::auth;
-use crate::database;
-use crate::form::extract_form;
+use crate::{auth, database, form::extract_form, redis::RedisConnection};
 use gotham::handler::HandlerFuture;
 use gotham::helpers::http::response::{create_empty_response, create_response};
 use gotham::middleware::session::SessionData;
@@ -9,7 +7,6 @@ use hyper::{header, Body, Response, StatusCode};
 use mustache;
 use serde::Serialize;
 use std::{borrow::Cow, collections::HashMap, pin::Pin};
-
 
 // Compile the templates upfront.
 lazy_static! {
@@ -105,9 +102,9 @@ pub fn register_post(mut state: State) -> Pin<Box<HandlerFuture>> {
         let res = extract_form::<RegisterParams>(&mut state).await;
         match res {
             Ok(params) => {
-                let mut database = database::DATABASE.write().unwrap();
+                let conn = RedisConnection::borrow_from(&state);
                 database::add_user(
-                    &mut database,
+                    &conn,
                     database::User::new(&params.username, &params.password),
                 );
                 let res = create_found(&state, "/login");
@@ -133,26 +130,25 @@ pub fn login_post(mut state: State) -> Pin<Box<HandlerFuture>> {
         let res = extract_form::<LoginParams>(&mut state).await;
         match res {
             Ok(params) => {
-                let database = database::DATABASE.read().unwrap();
-                let res =
-                    match database::validate_user(&database, &params.username, &params.password) {
-                        Some(user) => {
-                            // We have a successful login!
-                            // Add this user to the session.
-                            let session: &mut auth::Session =
-                                SessionData::<auth::Session>::borrow_mut_from(&mut state);
+                let conn = RedisConnection::borrow_from(&state);
+                let res = match database::validate_user(&conn, &params.username, &params.password).await {
+                    Some(user) => {
+                        // We have a successful login!
+                        // Add this user to the session.
+                        let session: &mut auth::Session =
+                            SessionData::<auth::Session>::borrow_mut_from(&mut state);
 
-                            (*session).userid = Some(user.clone());
+                        (*session).userid = Some(user.clone());
 
-                            info!("{} logged in successfully", &params.username);
-                            create_found(&state, "/")
-                        }
-                        None => {
-                            let data: HashMap<String, String> = HashMap::new();
-                            info!("{} failed to log in", &params.username);
-                            render_template_response(&state, &LOGINFAIL_TPL, data)
-                        }
-                    };
+                        info!("{} logged in successfully", &params.username);
+                        create_found(&state, "/")
+                    }
+                    None => {
+                        let data: HashMap<String, String> = HashMap::new();
+                        info!("{} failed to log in", &params.username);
+                        render_template_response(&state, &LOGINFAIL_TPL, data)
+                    }
+                };
 
                 Ok((state, res))
             }

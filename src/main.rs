@@ -7,20 +7,53 @@ extern crate gotham_derive;
 #[macro_use]
 extern crate log;
 
-use gotham::handler::assets::FileOptions;
-use gotham::middleware::session::NewSessionMiddleware;
-use gotham::pipeline::new_pipeline;
-use gotham::pipeline::set::{finalize_pipeline_set, new_pipeline_set};
-use gotham::router::builder::*;
-use gotham::router::Router;
+use gotham::{
+    handler::assets::FileOptions,
+    //middleware::session::{Backend, NewBackend, NewSessionMiddleware, SessionIdentifier, SessionError},
+    middleware::session::NewSessionMiddleware,
+    pipeline::{
+        new_pipeline,
+        set::{finalize_pipeline_set, new_pipeline_set},
+    },
+    router::builder::*,
+    router::Router,
+};
 
 mod auth;
 mod database;
 mod form;
 mod handlers;
 
+/*
+struct RedisBackend;
+
+impl NewBackend for RedisBackend {
+    type Instance = RedisBackend;
+
+    fn new_backend(&self) -> std::io::Result<Self::Instance> {
+        Ok(RedisBackend)
+    }
+}
+
+impl Backend for RedisBackend {
+    fn persist_session(&self, identifier: SessionIdentifier, content: &[u8],) -> Result<(), SessionError> {
+        unimplemented!()
+    }
+
+    fn read_session(&self, identifier: SessionIdentifier,) -> Box<dyn Future<Item = Option<Vec<u8>>, Error = SessionError> + Send> {
+
+        unimplemented!()
+    }
+
+    fn drop_session(&self, identifier: SessionIdentifier) -> Result<(), SessionError> {
+
+        unimplemented!()
+    }
+}
+*/
+
 fn router() -> Router {
-    let middleware = NewSessionMiddleware::default()
+    let middleware = NewSessionMiddleware::default() // new(RedisBackend)
         .with_session_type::<auth::Session>()
         .insecure();
 
@@ -34,7 +67,6 @@ fn router() -> Router {
     let secured_chain = (secured, default_chain);
 
     build_router(default_chain, pipeline_set, |route| {
-
         // Setup the root route with the secured middleware.
         route.with_pipeline_chain(secured_chain, |route| {
             route.get("/").to(handlers::index);
@@ -58,13 +90,12 @@ fn router() -> Router {
 
 fn main() {
     env_logger::init();
-    
+
     let addr = "127.0.0.1:6767";
     println!("Listening on http://{}", addr);
 
     gotham::start(addr, router())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -72,7 +103,7 @@ mod tests {
     use gotham::test::TestServer;
     use hyper::{header, StatusCode};
     use mime;
-    
+
     #[test]
     fn visit_root_returns_unauthorized() {
         let test_server = TestServer::new(router()).unwrap();
@@ -81,7 +112,7 @@ mod tests {
             .get("http://localhost/")
             .perform()
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
@@ -91,21 +122,24 @@ mod tests {
 
         test_server
             .client()
-            .post("http://localhost/register",
-                  "username=onk&password=ponk",
-                  mime::MULTIPART_FORM_DATA,
+            .post(
+                "http://localhost/register",
+                "username=onk&password=ponk",
+                mime::MULTIPART_FORM_DATA,
             )
             .perform()
             .unwrap();
 
         let response = test_server
             .client()
-            .post("http://localhost/login",
-                  "username=onk&password=ponk",
-                  mime::MULTIPART_FORM_DATA,)
+            .post(
+                "http://localhost/login",
+                "username=onk&password=ponk",
+                mime::MULTIPART_FORM_DATA,
+            )
             .perform()
             .unwrap();
-        
+
         let headers = response.headers().clone();
         let cookie = headers.get(header::SET_COOKIE).unwrap();
 
@@ -115,8 +149,7 @@ mod tests {
             .with_header(header::COOKIE, cookie.to_owned())
             .perform()
             .unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
     }
-    
 }

@@ -1,7 +1,6 @@
 use crate::auth;
 use crate::database;
 use crate::form::extract_form;
-use futures::{future, Future};
 use gotham::handler::HandlerFuture;
 use gotham::helpers::http::response::{create_empty_response, create_response};
 use gotham::middleware::session::SessionData;
@@ -9,8 +8,8 @@ use gotham::state::{FromState, State};
 use hyper::{header, Body, Response, StatusCode};
 use mustache;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap, pin::Pin};
+
 
 // Compile the templates upfront.
 lazy_static! {
@@ -101,22 +100,23 @@ pub fn register_get(state: State) -> (State, Response<Body>) {
 }
 
 /// Handle a user being registered.
-pub fn register_post(mut state: State) -> Box<HandlerFuture> {
-    let f = extract_form::<RegisterParams>(&mut state).then(|res| match res {
-        Ok(params) => {
-            let mut database = database::DATABASE.write().unwrap();
-            database::add_user(
-                &mut database,
-                database::User::new(&params.username, &params.password),
-            );
-            let res = create_found(&state, "/login");
+pub fn register_post(mut state: State) -> Pin<Box<HandlerFuture>> {
+    Box::pin(async {
+        let res = extract_form::<RegisterParams>(&mut state).await;
+        match res {
+            Ok(params) => {
+                let mut database = database::DATABASE.write().unwrap();
+                database::add_user(
+                    &mut database,
+                    database::User::new(&params.username, &params.password),
+                );
+                let res = create_found(&state, "/login");
 
-            future::ok((state, res))
+                Ok((state, res))
+            }
+            Err(e) => Err((state, e)),
         }
-        Err(e) => future::err((state, e)),
-    });
-
-    Box::new(f)
+    })
 }
 
 /// Get the login form.
@@ -128,33 +128,35 @@ pub fn login_get(state: State) -> (State, Response<Body>) {
 }
 
 /// Process the login request.
-pub fn login_post(mut state: State) -> Box<HandlerFuture> {
-    let f = extract_form::<LoginParams>(&mut state).then(|res| match res {
-        Ok(params) => {
-            let database = database::DATABASE.read().unwrap();
-            let res = match database::validate_user(&database, &params.username, &params.password) {
-                Some(user) => {
-                    // We have a successful login!
-                    // Add this user to the session.
-                    let session: &mut auth::Session =
-                        SessionData::<auth::Session>::borrow_mut_from(&mut state);
+pub fn login_post(mut state: State) -> Pin<Box<HandlerFuture>> {
+    Box::pin(async {
+        let res = extract_form::<LoginParams>(&mut state).await;
+        match res {
+            Ok(params) => {
+                let database = database::DATABASE.read().unwrap();
+                let res =
+                    match database::validate_user(&database, &params.username, &params.password) {
+                        Some(user) => {
+                            // We have a successful login!
+                            // Add this user to the session.
+                            let session: &mut auth::Session =
+                                SessionData::<auth::Session>::borrow_mut_from(&mut state);
 
-                    (*session).userid = Some(user.clone());
+                            (*session).userid = Some(user.clone());
 
-                    trace!("{} logged in successfully", &params.username);
-                    create_found(&state, "/")
-                }
-                None => {
-                    let data: HashMap<String, String> = HashMap::new();
-                    trace!("{} failed to log in", &params.username);
-                    render_template_response(&state, &LOGINFAIL_TPL, data)
-                }
-            };
+                            info!("{} logged in successfully", &params.username);
+                            create_found(&state, "/")
+                        }
+                        None => {
+                            let data: HashMap<String, String> = HashMap::new();
+                            info!("{} failed to log in", &params.username);
+                            render_template_response(&state, &LOGINFAIL_TPL, data)
+                        }
+                    };
 
-            future::ok((state, res))
+                Ok((state, res))
+            }
+            Err(e) => Err((state, e)),
         }
-        Err(e) => future::err((state, e)),
-    });
-
-    Box::new(f)
+    })
 }

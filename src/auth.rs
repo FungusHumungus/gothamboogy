@@ -1,15 +1,16 @@
 use crate::database;
 use futures::future;
-use std::collections::HashMap;
 use gotham::handler::HandlerFuture;
-use gotham::helpers::http::response::{create_response, create_empty_response};
+use gotham::helpers::http::response::{create_empty_response, create_response};
 use gotham::middleware::session::SessionData;
 use gotham::middleware::Middleware;
 use gotham::state::{FromState, State};
 use hyper::StatusCode;
+use std::{collections::HashMap, pin::Pin};
 
 lazy_static! {
-    static ref NO_PERMISSION: mustache::Template = mustache::compile_path("templates/nopermission.tpl").unwrap();
+    static ref NO_PERMISSION: mustache::Template =
+        mustache::compile_path("templates/nopermission.tpl").unwrap();
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -23,20 +24,20 @@ pub struct Session {
 pub struct AuthMiddleware;
 
 impl Middleware for AuthMiddleware {
-    fn call<Chain>(self, state: State, chain: Chain) -> Box<HandlerFuture>
+    fn call<Chain>(self, state: State, chain: Chain) -> Pin<Box<HandlerFuture>>
     where
-        Chain: FnOnce(State) -> Box<HandlerFuture> + 'static,
+        Chain: FnOnce(State) -> Pin<Box<HandlerFuture>> + 'static,
     {
         let session: &Session = SessionData::<Session>::borrow_from(&state);
         match session.userid {
             Some(_) => chain(state),
             None => {
-                trace!("Authentication request denied");
+                info!("Authentication request denied");
 
                 let data: HashMap<String, String> = HashMap::new();
                 let res = match NO_PERMISSION.render_to_string(&data) {
                     Ok(content) => create_response(
-                        &state, 
+                        &state,
                         StatusCode::UNAUTHORIZED,
                         mime::TEXT_HTML_UTF_8,
                         content.into_bytes(),
@@ -44,7 +45,7 @@ impl Middleware for AuthMiddleware {
                     Err(_) => create_empty_response(&state, StatusCode::INTERNAL_SERVER_ERROR),
                 };
 
-                Box::new(future::ok((state, res)))
+                Box::pin(future::ok((state, res)))
             }
         }
     }

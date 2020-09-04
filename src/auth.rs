@@ -3,7 +3,7 @@ use futures::future;
 use gotham::handler::HandlerFuture;
 use gotham::helpers::http::response::{create_empty_response, create_response};
 use gotham::middleware::session::SessionData;
-use gotham::middleware::Middleware;
+use gotham::middleware::{Middleware, NewMiddleware};
 use gotham::state::{FromState, State};
 use hyper::StatusCode;
 use std::{collections::HashMap, pin::Pin};
@@ -20,8 +20,16 @@ pub struct Session {
 
 /// Middleware to handle authentication and ensure only authenticated users are
 /// permitted to the route.
-#[derive(Clone, NewMiddleware)]
+#[derive(Clone)]
 pub struct AuthMiddleware;
+
+impl NewMiddleware for AuthMiddleware {
+    type Instance = AuthMiddleware;
+    
+    fn new_middleware(&self) -> anyhow::Result<Self::Instance> {
+        Ok(AuthMiddleware)
+   }
+}
 
 impl Middleware for AuthMiddleware {
     fn call<Chain>(self, state: State, chain: Chain) -> Pin<Box<HandlerFuture>>

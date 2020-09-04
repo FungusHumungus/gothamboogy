@@ -1,13 +1,13 @@
 use core::str;
-use gotham::handler::{HandlerError, IntoHandlerError};
-use gotham::hyper::{body, Body, StatusCode};
+use gotham::handler::{HandlerError};
+use gotham::hyper::{body, Body};
 use gotham::state::{FromState, State};
 
 fn bad_request<E>(e: E) -> HandlerError
 where
-    E: std::error::Error + Send + 'static,
+    E: Into<anyhow::Error> + Send + 'static,
 {
-    e.into_handler_error().with_status(StatusCode::BAD_REQUEST)
+    e.into().into()
 }
 
 /// Extract the form parameters into a struct using Serde

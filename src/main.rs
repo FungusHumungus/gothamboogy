@@ -3,15 +3,12 @@ extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
-extern crate gotham_derive;
-#[macro_use]
 extern crate redis_async;
 #[macro_use]
 extern crate log;
 
 use gotham::{
     handler::assets::FileOptions,
-    //middleware::session::{Backend, NewBackend, NewSessionMiddleware, SessionIdentifier, SessionError},
     middleware::session::NewSessionMiddleware,
     pipeline::{
         new_pipeline,
@@ -27,36 +24,9 @@ mod form;
 mod handlers;
 mod redis;
 
-/*
-struct RedisBackend;
-
-impl NewBackend for RedisBackend {
-    type Instance = RedisBackend;
-
-    fn new_backend(&self) -> std::io::Result<Self::Instance> {
-        Ok(RedisBackend)
-    }
-}
-
-impl Backend for RedisBackend {
-    fn persist_session(&self, identifier: SessionIdentifier, content: &[u8],) -> Result<(), SessionError> {
-        unimplemented!()
-    }
-
-    fn read_session(&self, identifier: SessionIdentifier,) -> Box<dyn Future<Item = Option<Vec<u8>>, Error = SessionError> + Send> {
-
-        unimplemented!()
-    }
-
-    fn drop_session(&self, identifier: SessionIdentifier) -> Result<(), SessionError> {
-
-        unimplemented!()
-    }
-}
-*/
 
 fn router() -> Router {
-    let middleware = NewSessionMiddleware::default() // new(RedisBackend)
+    let middleware = NewSessionMiddleware::new(redis::RedisBackend)
         .with_session_type::<auth::Session>()
         .insecure();
 
